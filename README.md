@@ -16,10 +16,10 @@ The source repository also serves as a custom Homebrew tap:
 
 ```sh
 brew tap atlab12/locmonitor https://github.com/AtLab12/LOCMonitor.git
-brew install --HEAD atlab12/locmonitor/locmonitor
+brew install atlab12/locmonitor/locmonitor
 ```
 
-This builds the latest `main` source with Go (installed automatically by Homebrew). After a stable release formula has been published to `Formula/locmonitor.rb`, omit `--HEAD`. No Homebrew core submission is required.
+This installs v0.1.0 from a source archive verified with SHA-256, building with Go (installed automatically by Homebrew). No Homebrew core submission is required. Use `brew install --HEAD atlab12/locmonitor/locmonitor` if you prefer the latest `main` source.
 
 To update the development build:
 
@@ -142,7 +142,7 @@ git tag v0.1.0
 git push origin v0.1.0
 ```
 
-The release workflow tests the source, builds macOS/Linux binaries for Intel/AMD and ARM, and publishes source/binary archives, SHA-256 checksums, and a stable `locmonitor.rb` formula. Download that formula from the release, replace `Formula/locmonitor.rb`, and commit it to `main` to enable stable `brew install atlab12/locmonitor/locmonitor`. Before publishing the formula, verify with `brew install --build-from-source atlab12/locmonitor/locmonitor` and `brew test atlab12/locmonitor/locmonitor`.
+The release workflow can also be started manually from the GitHub Actions **Release** page by entering an existing tag (useful if the first tag was pushed before GitHub registered the workflow). It tests the source, builds macOS/Linux binaries for Intel/AMD and ARM, and publishes source/binary archives, SHA-256 checksums, and a stable `locmonitor.rb` formula. Download that formula from the release, replace `Formula/locmonitor.rb`, and commit it to `main` to update the stable `brew install atlab12/locmonitor/locmonitor` version. Before publishing the formula, verify with `brew install --build-from-source atlab12/locmonitor/locmonitor` and `brew test atlab12/locmonitor/locmonitor`.
 
 You can also run `make release VERSION=v0.1.0` locally from the tagged checkout. Release output is written to `dist/`.
 

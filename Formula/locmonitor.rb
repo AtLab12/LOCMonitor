@@ -1,6 +1,8 @@
 class Locmonitor < Formula
   desc "Track committed pull request size after each Git commit"
   homepage "https://github.com/AtLab12/LOCMonitor"
+  url "https://github.com/AtLab12/LOCMonitor/archive/refs/tags/v0.1.0.tar.gz"
+  sha256 "e865a8d725859a122fbf2cf4caaacf0c359db211e28409a75efb3cc63ca80afd"
   license "MIT"
   head "https://github.com/AtLab12/LOCMonitor.git", branch: "main"
 
@@ -29,7 +31,7 @@ class Locmonitor < Formula
     system "git", "-c", "commit.gpgsign=false", "commit", "--allow-empty", "-m", "base"
     system "git", "checkout", "-b", "feature"
     (testpath/"example.txt").write("one\ntwo\n")
-    system "git", "add", "."
+    system "git", "add", "example.txt"
     system "git", "-c", "commit.gpgsign=false", "commit", "-m", "feature"
     assert_match "2/400 LOC", shell_output("#{bin}/locmonitor status")
   end
