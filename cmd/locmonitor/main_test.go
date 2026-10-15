@@ -250,3 +250,24 @@ func TestGlobalConfigCommands(t *testing.T) {
 		t.Fatalf("local config created: %v", err)
 	}
 }
+
+func TestAnimationSettingKeepsPipesAndJSONClean(t *testing.T) {
+	dir := setup(t)
+	stage(t, dir)
+	setConfig(t, dir, `{"animate":true,"limit":2}`)
+	out := must(t, dir, testBinary, "git", "commit", "-m", "animated setting")
+	if strings.Contains(out, "\r") || strings.Count(out, "LOCMonitor [") != 1 {
+		t.Fatalf("animated redirected commit: %q", out)
+	}
+	out = must(t, dir, testBinary, "status", "--json")
+	var result map[string]any
+	if err := json.Unmarshal([]byte(out), &result); err != nil {
+		t.Fatal(err)
+	}
+	if result["total"] != float64(2) {
+		t.Fatal(out)
+	}
+	if _, ok := result["Animate"]; ok {
+		t.Fatal("display option leaked into JSON stats")
+	}
+}

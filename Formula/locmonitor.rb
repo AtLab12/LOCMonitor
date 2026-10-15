@@ -44,6 +44,7 @@ class Locmonitor < Formula
     system "git", "-c", "commit.gpgsign=false", "commit", "-m", "excluded files"
     config = JSON.parse((testpath/"settings/config.json").read)
     settings = config.fetch("repositories").values.first
+    settings["animate"] = true
     settings["exclude_extensions"] = [".svg"]
     settings["exclude_folders"] = ["vendor"]
     File.write(testpath/"settings/config.json", JSON.generate(config))

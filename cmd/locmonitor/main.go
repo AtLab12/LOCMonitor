@@ -50,7 +50,7 @@ func run(args []string) int {
 			if jsonOutput {
 				err = json.NewEncoder(os.Stdout).Encode(s)
 			} else {
-				fmt.Print(monitor.Render(s))
+				err = monitor.Display(os.Stdout, s)
 			}
 			if err == nil && check && s.Total > s.Limit {
 				return 1
@@ -204,7 +204,9 @@ func wrapGit(args []string) int {
 			} else if err != nil {
 				fmt.Fprintln(os.Stderr, "locmonitor: commit succeeded;", err)
 			} else {
-				fmt.Print(monitor.Render(s))
+				if err := monitor.Display(os.Stdout, s); err != nil {
+					fmt.Fprintln(os.Stderr, "locmonitor: commit succeeded;", err)
+				}
 			}
 		}
 	}

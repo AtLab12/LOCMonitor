@@ -85,6 +85,7 @@ All repository settings live in **one global file**: `~/.config/locmonitor/confi
       "base": "auto",
       "limit": 400,
       "warn_at_percent": 80,
+      "animate": false,
       "exclude_extensions": [".lock", ".svg", "min.js"],
       "exclude_folders": ["vendor", "generated", "docs/assets"],
       "exclude": ["**/*.generated.*"]
@@ -113,6 +114,7 @@ You can register a path with `locmonitor init /path/to/repository` or run `locmo
 | `base` | `"auto"` | PR target branch or another commit reference |
 | `limit` | `400` | Maximum additions + deletions |
 | `warn_at_percent` | `80` | Percentage at which the warning starts |
+| `animate` | `false` | Briefly animate the bar in an interactive terminal |
 | `exclude_extensions` | `[]` | File extensions to omit everywhere, with or without the leading dot |
 | `exclude_folders` | `[]` | Repository-relative folders to omit, including all descendants |
 | `exclude` | `[]` | Additional repository-relative Git glob patterns to omit |
@@ -125,6 +127,8 @@ All three exclusion lists combine: a file matching any one is omitted from line,
 - `exclude_folders: ["vendor", "src/generated"]` excludes those exact paths and everything beneath them. Paths are relative to the repository root, even when you run Git from a subfolder. A trailing `/` is optional. `vendor` keeps `vendor-other` and `src/vendor`; to exclude every folder named `vendor`, use `exclude: ["**/vendor/**"]`. Spaces and brackets in folder names are treated literally. Use `/` separators, without absolute paths or `..`.
 
 The advanced `exclude` list uses Git's `glob` pathspec syntax: `*.lock` matches root files; `**/*.lock` matches lockfiles at any depth. No files are excluded automatically. The global config lives outside your repositories and is not included in their diffs.
+
+Set `"animate": true` inside a repository’s entry to animate its bar after commits and when running `locmonitor status`. The bar fills from empty to its final position in about 240 ms, while the LOC numbers always show the actual result. Animation is off by default. JSON, redirected output, CI (`CI` set), terminals with unset or `dumb` `TERM`, and terminals too narrow for the result use a static line. Empty bars need no animation. The setting applies to that repository only.
 
 The display progresses through `OK`, `NEAR LIMIT`, `LIMIT REACHED`, and `OVER LIMIT`. The bar caps at 100%, while the numeric count and percentage keep growing. LOC means added/deleted text lines, including comments and whitespace. Pure renames add no lines when Git recognizes them. Binary files are shown separately because Git cannot assign them meaningful line counts.
 

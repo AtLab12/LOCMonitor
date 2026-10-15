@@ -198,3 +198,23 @@ func TestConfigLockAndSymlinkPreservation(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestAnimateConfig(t *testing.T) {
+	for _, tc := range []struct {
+		body string
+		want bool
+	}{{`{}`, false}, {`{"animate":true}`, true}, {`{"animate":false}`, false}} {
+		c, err := parseConfig([]byte(tc.body))
+		if err != nil || c.Animate != tc.want {
+			t.Fatalf("%s: %+v %v", tc.body, c, err)
+		}
+	}
+	if _, err := parseConfig([]byte(`{"animate":"yes"}`)); err == nil {
+		t.Fatal("accepted non-boolean animation setting")
+	}
+	dir := repo(t)
+	writeConfig(t, dir, `{"animate":true}`)
+	if s := measure(t, dir); !s.Animate {
+		t.Fatal("repository animation setting not applied")
+	}
+}

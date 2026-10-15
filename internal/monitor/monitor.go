@@ -26,6 +26,7 @@ func Root(dir string) (string, error) {
 }
 
 type Stats struct {
+	Animate   bool    `json:"-"`
 	Base      string  `json:"base"`
 	MergeBase string  `json:"merge_base"`
 	Added     int     `json:"added"`
@@ -82,6 +83,7 @@ func Measure(dir string) (Stats, error) {
 	s.Base = base
 	s.MergeBase = strings.TrimSpace(string(merge))
 	s.Limit = c.Limit
+	s.Animate = c.Animate
 	args := []string{"diff", "--numstat", "-z", "--no-ext-diff", "--no-textconv", "--find-renames", s.MergeBase, strings.TrimSpace(string(headID)), "--", "."}
 	for _, p := range c.Exclude {
 		args = append(args, ":(top,exclude,glob)"+p)
@@ -151,16 +153,24 @@ func parseNumstat(data []byte, s *Stats) error {
 	return nil
 }
 
-func Render(s Stats) string {
-	const width = 24
-	fill := int(s.Percent * width / 100)
-	if fill > width {
-		fill = width
+const barWidth = 24
+
+func barFill(s Stats) int {
+	fill := int(s.Percent * barWidth / 100)
+	if fill > barWidth {
+		return barWidth
 	}
 	if fill < 0 {
-		fill = 0
+		return 0
 	}
-	result := fmt.Sprintf("LOCMonitor [%s%s] %d/%d LOC (%.0f%%) | +%d -%d | %s", strings.Repeat("#", fill), strings.Repeat("-", width-fill), s.Total, s.Limit, s.Percent, s.Added, s.Deleted, s.State)
+	return fill
+}
+
+func Render(s Stats) string { return renderFill(s, barFill(s)) }
+
+// Only the bar changes during animation; the counts always show the real diff.
+func renderFill(s Stats, fill int) string {
+	result := fmt.Sprintf("LOCMonitor [%s%s] %d/%d LOC (%.0f%%) | +%d -%d | %s", strings.Repeat("#", fill), strings.Repeat("-", barWidth-fill), s.Total, s.Limit, s.Percent, s.Added, s.Deleted, s.State)
 	if s.Binary > 0 {
 		result += fmt.Sprintf(" | %d binary file(s), not counted as LOC", s.Binary)
 	}

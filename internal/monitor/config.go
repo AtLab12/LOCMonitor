@@ -16,6 +16,7 @@ const LegacyConfigName = ".locmonitor.json"
 const PlaceholderPath = "path to your repository"
 
 type Config struct {
+	Animate           bool     `json:"animate"`
 	Base              string   `json:"base"`
 	Limit             int      `json:"limit"`
 	WarnAt            int      `json:"warn_at_percent"`
