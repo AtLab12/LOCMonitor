@@ -40,6 +40,12 @@ func run(args []string) int {
 		}
 		var s monitor.Stats
 		s, err = monitor.Measure("")
+		if errors.Is(err, monitor.ErrNotMonitored) {
+			if jsonOutput {
+				fmt.Println(`{"monitored":false}`)
+			}
+			return 0
+		}
 		if err == nil {
 			if jsonOutput {
 				err = json.NewEncoder(os.Stdout).Encode(s)
@@ -51,12 +57,37 @@ func run(args []string) int {
 			}
 		}
 	case "init":
-		if len(args) != 1 {
-			return fail(errors.New("usage: locmonitor init"))
+		dir, migrate := "", false
+		for _, arg := range args[1:] {
+			if arg == "--migrate" {
+				migrate = true
+			} else if dir == "" && !strings.HasPrefix(arg, "-") {
+				dir = arg
+			} else {
+				return fail(errors.New("usage: locmonitor init [repository-path] [--migrate]"))
+			}
 		}
-		err = monitor.Init("")
+		err = monitor.Init(dir, migrate)
 		if err == nil {
-			fmt.Println("Created .locmonitor.json. Commit it to share your team's PR budget.")
+			filename, _ := monitor.ConfigPath()
+			fmt.Println("Repository registered in " + filename)
+			if migrate {
+				fmt.Println("Imported legacy settings. The old .locmonitor.json is no longer read and may be removed.")
+			}
+		}
+	case "config":
+		if len(args) != 2 || (args[1] != "path" && args[1] != "init") {
+			return fail(errors.New("usage: locmonitor config path|init"))
+		}
+		if args[1] == "init" {
+			err = monitor.CreateConfig()
+		}
+		if err == nil {
+			var filename string
+			filename, err = monitor.ConfigPath()
+			if err == nil {
+				fmt.Println(filename)
+			}
 		}
 	case "shell-init":
 		if len(args) != 2 {
@@ -168,7 +199,9 @@ func wrapGit(args []string) int {
 		// --dry-run and --help can succeed without creating a commit.
 		if err == nil && (strings.TrimSpace(string(after)) != before || realAmend(args[len(prefix)+1:])) {
 			s, err := monitor.Measure(root)
-			if err != nil {
+			if errors.Is(err, monitor.ErrNotMonitored) {
+				return 0
+			} else if err != nil {
 				fmt.Fprintln(os.Stderr, "locmonitor: commit succeeded;", err)
 			} else {
 				fmt.Print(monitor.Render(s))
@@ -238,7 +271,10 @@ func hook(action string) error {
 const help = `LOCMonitor — keep pull requests small
 
 Usage:
-  locmonitor init                  Create .locmonitor.json in the repository root
+  locmonitor config init           Create the global config with a placeholder
+  locmonitor config path           Print the global config path
+  locmonitor init [path] [--migrate]
+                                   Register a repository; optionally import its old config
   locmonitor status [--json] [--check]
                                    Show committed branch additions + deletions
   locmonitor shell-init bash|zsh|fish
@@ -248,6 +284,8 @@ Usage:
   locmonitor git <git arguments>    Run Git, then report after a successful commit
   locmonitor --version
 
+Config: ~/.config/locmonitor/config.json (or XDG_CONFIG_HOME / LOCMONITOR_CONFIG).
+Only listed repositories are monitored. Unlisted repositories produce no report.
 Default: 400 LOC, warning at 80%, base auto-detected from origin/HEAD, main, master.
 --check exits 1 above the budget; errors exit 2. Commits are never blocked.
 `

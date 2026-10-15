@@ -1,0 +1,12 @@
+{
+  "repositories": {
+    "path to your repository": {
+      "base": "auto",
+      "limit": 400,
+      "warn_at_percent": 80,
+      "exclude": [],
+      "exclude_extensions": [],
+      "exclude_folders": []
+    }
+  }
+}

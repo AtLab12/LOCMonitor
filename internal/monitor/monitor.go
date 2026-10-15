@@ -2,33 +2,11 @@ package monitor
 
 import (
 	"bytes"
-	"encoding/json"
-	"errors"
 	"fmt"
-	"io"
-	"os"
 	"os/exec"
-	"path"
-	"path/filepath"
 	"strconv"
 	"strings"
 )
-
-const ConfigName = ".locmonitor.json"
-
-type Config struct {
-	Base              string   `json:"base"`
-	Limit             int      `json:"limit"`
-	WarnAt            int      `json:"warn_at_percent"`
-	Exclude           []string `json:"exclude"`
-	ExcludeExtensions []string `json:"exclude_extensions"`
-	ExcludeFolders    []string `json:"exclude_folders"`
-}
-
-func Defaults() Config {
-	return Config{Base: "auto", Limit: 400, WarnAt: 80,
-		Exclude: []string{}, ExcludeExtensions: []string{}, ExcludeFolders: []string{}}
-}
 
 func Git(dir string, args ...string) ([]byte, error) {
 	cmd := exec.Command("git", args...)
@@ -45,72 +23,6 @@ func Git(dir string, args ...string) ([]byte, error) {
 func Root(dir string) (string, error) {
 	out, err := Git(dir, "rev-parse", "--show-toplevel")
 	return strings.TrimSpace(string(out)), err
-}
-
-func Load(root string) (Config, error) {
-	c := Defaults()
-	data, err := os.ReadFile(filepath.Join(root, ConfigName))
-	if errors.Is(err, os.ErrNotExist) {
-		return c, nil
-	}
-	if err != nil {
-		return c, err
-	}
-	dec := json.NewDecoder(bytes.NewReader(data))
-	dec.DisallowUnknownFields()
-	if err := dec.Decode(&c); err != nil {
-		return c, fmt.Errorf("%s: %w", ConfigName, err)
-	}
-	var extra any
-	if err := dec.Decode(&extra); err != io.EOF {
-		return c, fmt.Errorf("%s must contain one JSON object", ConfigName)
-	}
-	if c.Limit < 1 || c.WarnAt < 1 || c.WarnAt > 100 || c.Base == "" || strings.HasPrefix(c.Base, "-") {
-		return c, fmt.Errorf("config requires a base, limit > 0, and warn_at_percent between 1 and 100")
-	}
-	for _, p := range c.Exclude {
-		if p == "" || strings.HasPrefix(p, ":") {
-			return c, fmt.Errorf("exclude entries must be nonempty Git glob patterns without pathspec magic")
-		}
-	}
-	for i, extension := range c.ExcludeExtensions {
-		extension = strings.TrimPrefix(extension, ".")
-		if extension == "" || strings.HasPrefix(extension, ".") || strings.HasSuffix(extension, ".") || strings.ContainsAny(extension, "/\\*?[]\x00 \t\r\n") {
-			return c, fmt.Errorf("exclude_extensions entries must be extensions such as .json, lock, or min.js (no paths or wildcards)")
-		}
-		c.ExcludeExtensions[i] = extension
-	}
-	for i, folder := range c.ExcludeFolders {
-		if folder == "" || path.IsAbs(folder) || strings.ContainsAny(folder, "\\\x00") {
-			return c, fmt.Errorf("exclude_folders entries must be repository-relative folder paths using / separators")
-		}
-		for _, part := range strings.Split(folder, "/") {
-			if part == ".." {
-				return c, fmt.Errorf("exclude_folders entries cannot contain ..")
-			}
-		}
-		folder = path.Clean(folder)
-		if folder == "." {
-			return c, fmt.Errorf("exclude_folders must name a folder, not the repository root")
-		}
-		c.ExcludeFolders[i] = folder
-	}
-	return c, nil
-}
-
-func Init(dir string) error {
-	root, err := Root(dir)
-	if err != nil {
-		return err
-	}
-	data, _ := json.MarshalIndent(Defaults(), "", "  ")
-	f, err := os.OpenFile(filepath.Join(root, ConfigName), os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0644)
-	if err != nil {
-		return err
-	}
-	defer f.Close()
-	_, err = f.Write(append(data, '\n'))
-	return err
 }
 
 type Stats struct {
@@ -138,7 +50,7 @@ func ResolveBase(root, base string) (string, error) {
 			return b, nil
 		}
 	}
-	return "", fmt.Errorf("cannot find a base branch; set base in %s (and fetch it if needed)", ConfigName)
+	return "", fmt.Errorf("cannot find a base branch; set base in this repository’s global config entry (and fetch it if needed)")
 }
 
 func Measure(dir string) (Stats, error) {

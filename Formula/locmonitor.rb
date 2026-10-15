@@ -17,19 +17,22 @@ class Locmonitor < Formula
       Add to ~/.zshrc:
         eval "$(locmonitor shell-init zsh)"
 
-      In a repository, run:
-        locmonitor init
+      Create your global config:
+        locmonitor config init
 
-      Edit .locmonitor.json to set your PR base, line budget, and exclusions.
+      Edit ~/.config/locmonitor/config.json to list repositories and their settings.
+      Or run locmonitor init inside each repository to register its path.
     EOS
   end
 
   test do
+    ENV["LOCMONITOR_CONFIG"] = (testpath/"settings/config.json").to_s
     system "git", "init", "-b", "main"
     system "git", "config", "user.email", "test@example.com"
     system "git", "config", "user.name", "Homebrew Test"
     system "git", "-c", "commit.gpgsign=false", "commit", "--allow-empty", "-m", "base"
     system "git", "checkout", "-b", "feature"
+    system bin/"locmonitor", "init"
     (testpath/"example.txt").write("one\ntwo\n")
     system "git", "add", "example.txt"
     system "git", "-c", "commit.gpgsign=false", "commit", "-m", "feature"
@@ -39,9 +42,11 @@ class Locmonitor < Formula
     (testpath/"image.svg").write("excluded type\n")
     system "git", "add", "vendor", "image.svg"
     system "git", "-c", "commit.gpgsign=false", "commit", "-m", "excluded files"
-    (testpath/".locmonitor.json").write <<~JSON
-      {"exclude_extensions": [".svg"], "exclude_folders": ["vendor"]}
-    JSON
+    config = JSON.parse((testpath/"settings/config.json").read)
+    settings = config.fetch("repositories").values.first
+    settings["exclude_extensions"] = [".svg"]
+    settings["exclude_folders"] = ["vendor"]
+    (testpath/"settings/config.json").write(JSON.generate(config))
     assert_match "2/400 LOC", shell_output("#{bin}/locmonitor status")
   end
 end

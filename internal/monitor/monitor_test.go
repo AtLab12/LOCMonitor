@@ -10,6 +10,7 @@ import (
 
 func repo(t *testing.T) string {
 	t.Helper()
+	t.Setenv("LOCMONITOR_CONFIG", filepath.Join(t.TempDir(), "config.json"))
 	t.Setenv("GIT_CONFIG_NOSYSTEM", "1")
 	t.Setenv("GIT_CONFIG_GLOBAL", os.DevNull)
 	dir := t.TempDir()
@@ -20,6 +21,9 @@ func repo(t *testing.T) string {
 	write(t, dir, "app.txt", "one\ntwo\nthree\n")
 	commit(t, dir)
 	git(t, dir, "checkout", "-b", "feature")
+	if err := Init(dir, false); err != nil {
+		t.Fatal(err)
+	}
 	return dir
 }
 func git(t *testing.T, dir string, args ...string) string {
@@ -91,9 +95,9 @@ func TestAmendRevertRenameBinaryAndOddPaths(t *testing.T) {
 }
 func TestConfigExclusionsAndBudget(t *testing.T) {
 	dir := repo(t)
-	c := Config{Base: "main", Limit: 2, WarnAt: 50, Exclude: []string{"*.lock", ConfigName}}
+	c := Config{Base: "main", Limit: 2, WarnAt: 50, Exclude: []string{"*.lock", LegacyConfigName}}
 	data, _ := json.Marshal(c)
-	write(t, dir, ConfigName, string(data))
+	writeConfig(t, dir, string(data))
 	write(t, dir, "deps.lock", "ignore\nme\n")
 	write(t, dir, "new.txt", "a\nb\nc\n")
 	commit(t, dir)
@@ -106,15 +110,12 @@ func TestConfigExclusionsAndBudget(t *testing.T) {
 	}
 }
 func TestConfigValidation(t *testing.T) {
-	dir := t.TempDir()
-	for _, body := range []string{`{"limit":0}`, `{"limit":-1}`, `{"base":"-bad"}`, `{"warn_at_percent":101}`, `{"typo":1}`, `{} {}`, `{"exclude":[":(all)"]}`} {
-		write(t, dir, ConfigName, body)
-		if _, err := Load(dir); err == nil {
+	for _, body := range []string{`{"limit":0}`, `{"limit":-1}`, `{"base":"-bad"}`, `{"warn_at_percent":101}`, `{"typo":1}`, `{} {}`, `{"exclude":[":(all)"]}`, `null`} {
+		if _, err := parseConfig([]byte(body)); err == nil {
 			t.Errorf("accepted %s", body)
 		}
 	}
-	write(t, dir, ConfigName, `{"limit":100}`)
-	c, err := Load(dir)
+	c, err := parseConfig([]byte(`{"limit":100}`))
 	if err != nil || c.Base != "auto" {
 		t.Fatalf("partial config: %+v %v", c, err)
 	}
@@ -125,11 +126,12 @@ func TestMissingBaseAndUnrelatedHistory(t *testing.T) {
 	if _, err := Measure(dir); err == nil {
 		t.Fatal("expected missing base error")
 	}
-	write(t, dir, ConfigName, `{"base":"feature"}`)
+	writeConfig(t, dir, `{"base":"feature"}`)
 	if s := measure(t, dir); s.Total != 0 {
 		t.Fatalf("base branch should be empty: %+v", s)
 	}
 	git(t, dir, "checkout", "--orphan", "unrelated")
+	write(t, dir, "unrelated.txt", "separate history\n")
 	commit(t, dir)
 	if _, err := Measure(dir); err == nil {
 		t.Fatal("expected unrelated history error")
@@ -145,17 +147,22 @@ func TestRemoteDefaultBase(t *testing.T) {
 }
 func TestInitDoesNotOverwrite(t *testing.T) {
 	dir := repo(t)
-	if err := Init(dir); err != nil {
+	writeConfig(t, dir, `{"limit":123}`)
+	if err := Init(dir, false); err != nil {
 		t.Fatal(err)
 	}
-	if err := Init(dir); err == nil {
-		t.Fatal("overwrote existing config")
+	c, err := Load(dir)
+	if err != nil || c.Limit != 123 {
+		t.Fatalf("overwrote config: %+v %v", c, err)
 	}
 }
 func TestLinkedWorktree(t *testing.T) {
 	dir := repo(t)
 	linked := filepath.Join(t.TempDir(), "linked")
 	git(t, dir, "worktree", "add", "-b", "linked", linked, "main")
+	if err := Init(linked, false); err != nil {
+		t.Fatal(err)
+	}
 	write(t, linked, "new.txt", "a\nb\n")
 	commit(t, linked)
 	if s := measure(t, linked); s.Total != 2 {
@@ -191,8 +198,8 @@ func TestFileTypeAndFolderExclusions(t *testing.T) {
 		write(t, dir, name, body)
 	}
 	commit(t, dir)
-	// Keep the config uncommitted so it does not affect the measured diff.
-	write(t, dir, ConfigName, `{
+	// Global configuration is outside the repository and never affects its diff.
+	writeConfig(t, dir, `{
   "exclude_extensions": [".json", "lock", "min.js"],
   "exclude_folders": ["vendor/", "./generated files/[cache]/", "src/generated"],
   "exclude": ["**/*.skip"]
@@ -217,26 +224,44 @@ func TestExclusionsAlsoApplyToDeletions(t *testing.T) {
 	git(t, dir, "checkout", "-b", "delete-files")
 	git(t, dir, "rm", "data.json", "vendor/nested/file.txt", "app.txt")
 	commit(t, dir)
-	write(t, dir, ConfigName, `{"exclude_extensions":["json"],"exclude_folders":["vendor"]}`)
+	writeConfig(t, dir, `{"exclude_extensions":["json"],"exclude_folders":["vendor"]}`)
 	if s := measure(t, dir); s.Deleted != 3 || s.Added != 0 || s.Files != 1 {
 		t.Fatalf("excluded deletions counted: %+v", s)
 	}
 }
 
 func TestExclusionValidation(t *testing.T) {
-	dir := t.TempDir()
+
 	for _, extension := range []string{"", ".", "..json", "json.", "*.json", "src/json", "json\\foo", "[js]", "j?on", "json\x00", " json"} {
 		data, _ := json.Marshal(map[string]any{"exclude_extensions": []string{extension}})
-		write(t, dir, ConfigName, string(data))
-		if _, err := Load(dir); err == nil {
+		if _, err := parseConfig(data); err == nil {
 			t.Errorf("accepted extension %q", extension)
 		}
 	}
 	for _, folder := range []string{"", ".", "./", "/vendor", "..", "../vendor", "a/../vendor", "vendor\\nested", "vendor\x00"} {
 		data, _ := json.Marshal(map[string]any{"exclude_folders": []string{folder}})
-		write(t, dir, ConfigName, string(data))
-		if _, err := Load(dir); err == nil {
+		if _, err := parseConfig(data); err == nil {
 			t.Errorf("accepted folder %q", folder)
 		}
+	}
+}
+
+func writeConfig(t *testing.T, root, body string) {
+	t.Helper()
+	filename, err := ConfigPath()
+	if err != nil {
+		t.Fatal(err)
+	}
+	global, err := readGlobal(filename)
+	if err != nil {
+		t.Fatal(err)
+	}
+	root, err = repositoryPath(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	global.Repositories[root] = json.RawMessage(body)
+	if err := writeGlobal(filename, global); err != nil {
+		t.Fatal(err)
 	}
 }

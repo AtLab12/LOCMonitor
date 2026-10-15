@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -47,6 +48,7 @@ func must(t *testing.T, dir, name string, args ...string) string {
 }
 func setup(t *testing.T) string {
 	t.Helper()
+	t.Setenv("LOCMONITOR_CONFIG", filepath.Join(t.TempDir(), "config.json"))
 	t.Setenv("GIT_CONFIG_NOSYSTEM", "1")
 	t.Setenv("GIT_CONFIG_GLOBAL", os.DevNull)
 	t.Setenv("PATH", filepath.Dir(testBinary)+string(os.PathListSeparator)+os.Getenv("PATH"))
@@ -57,6 +59,7 @@ func setup(t *testing.T) string {
 	must(t, dir, "git", "config", "commit.gpgsign", "false")
 	must(t, dir, "git", "commit", "--allow-empty", "-m", "base")
 	must(t, dir, "git", "checkout", "-b", "feature")
+	must(t, dir, testBinary, "init")
 	return dir
 }
 func stage(t *testing.T, dir string) {
@@ -110,7 +113,7 @@ func TestHookPreservationAndDuplicateSuppression(t *testing.T) {
 }
 func TestConfigErrorDoesNotFailCommit(t *testing.T) {
 	dir := setup(t)
-	os.WriteFile(filepath.Join(dir, ".locmonitor.json"), []byte(`{"base":"missing"}`), 0644)
+	setConfig(t, dir, `{"base":"missing"}`)
 	out := must(t, dir, testBinary, "git", "commit", "--allow-empty", "-m", "success")
 	if !strings.Contains(out, "commit succeeded;") {
 		t.Fatal(out)
@@ -120,7 +123,7 @@ func TestCheckAndJSON(t *testing.T) {
 	dir := setup(t)
 	stage(t, dir)
 	must(t, dir, "git", "commit", "-m", "feature")
-	os.WriteFile(filepath.Join(dir, ".locmonitor.json"), []byte(`{"limit":1}`), 0644)
+	setConfig(t, dir, `{"limit":1}`)
 	out, code := command(t, dir, testBinary, "status", "--json", "--check")
 	if code != 1 || !strings.Contains(out, `"total":2`) {
 		t.Fatalf("%d %s", code, out)
@@ -181,4 +184,69 @@ func TestCustomHooksPath(t *testing.T) {
 		t.Fatal(err)
 	}
 	must(t, dir, testBinary, "hook", "uninstall")
+}
+
+func setConfig(t *testing.T, dir, body string) {
+	t.Helper()
+	canonical, err := filepath.EvalSymlinks(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, err := json.Marshal(map[string]any{"repositories": map[string]json.RawMessage{canonical: json.RawMessage(body)}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(os.Getenv("LOCMONITOR_CONFIG"), data, 0600); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestUnregisteredRepositoryIsQuiet(t *testing.T) {
+	dir := setup(t)
+	if err := os.Remove(os.Getenv("LOCMONITOR_CONFIG")); err != nil {
+		t.Fatal(err)
+	}
+	// Local legacy files cannot opt a repository into global monitoring.
+	os.WriteFile(filepath.Join(dir, ".locmonitor.json"), []byte(`{"base":"missing"}`), 0644)
+	out := must(t, dir, testBinary, "git", "commit", "--allow-empty", "-m", "unmonitored")
+	if strings.Contains(out, "LOCMonitor [") || strings.Contains(out, "locmonitor:") {
+		t.Fatal(out)
+	}
+	must(t, dir, testBinary, "hook", "install")
+	out = must(t, dir, "git", "commit", "--allow-empty", "-m", "unmonitored hook")
+	if strings.Contains(out, "LOCMonitor [") || strings.Contains(out, "locmonitor:") {
+		t.Fatal(out)
+	}
+	if out := must(t, dir, testBinary, "status", "--check"); out != "" {
+		t.Fatal(out)
+	}
+	if out := must(t, dir, testBinary, "status", "--json"); strings.TrimSpace(out) != `{"monitored":false}` {
+		t.Fatal(out)
+	}
+}
+
+func TestGlobalConfigCommands(t *testing.T) {
+	dir := setup(t)
+	os.Remove(os.Getenv("LOCMONITOR_CONFIG"))
+	must(t, dir, testBinary, "config", "init")
+	data, err := os.ReadFile(os.Getenv("LOCMONITOR_CONFIG"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(data), "path to your repository") {
+		t.Fatal(string(data))
+	}
+	if out := must(t, dir, testBinary, "status"); out != "" {
+		t.Fatal(out)
+	}
+	if out := must(t, dir, testBinary, "config", "path"); strings.TrimSpace(out) != os.Getenv("LOCMONITOR_CONFIG") {
+		t.Fatal(out)
+	}
+	must(t, t.TempDir(), testBinary, "init", dir)
+	if out := must(t, dir, testBinary, "status"); !strings.Contains(out, "LOCMonitor [") {
+		t.Fatal(out)
+	}
+	if _, err := os.Stat(filepath.Join(dir, ".locmonitor.json")); !os.IsNotExist(err) {
+		t.Fatalf("local config created: %v", err)
+	}
 }
