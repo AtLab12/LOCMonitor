@@ -46,7 +46,7 @@ class Locmonitor < Formula
     settings = config.fetch("repositories").values.first
     settings["exclude_extensions"] = [".svg"]
     settings["exclude_folders"] = ["vendor"]
-    (testpath/"settings/config.json").write(JSON.generate(config))
+    File.write(testpath/"settings/config.json", JSON.generate(config))
     assert_match "2/400 LOC", shell_output("#{bin}/locmonitor status")
   end
 end
