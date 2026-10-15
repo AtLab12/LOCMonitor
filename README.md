@@ -19,7 +19,7 @@ brew tap atlab12/locmonitor https://github.com/AtLab12/LOCMonitor.git
 brew install atlab12/locmonitor/locmonitor
 ```
 
-This installs v0.2.0 from a source archive verified with SHA-256, building with Go (installed automatically by Homebrew). No Homebrew core submission is required. Use `brew install --HEAD atlab12/locmonitor/locmonitor` if you prefer the latest `main` source.
+This installs v0.3.0 from a source archive verified with SHA-256, building with Go (installed automatically by Homebrew). No Homebrew core submission is required. Use `brew install --HEAD atlab12/locmonitor/locmonitor` if you prefer the latest `main` source.
 
 To update the development build:
 

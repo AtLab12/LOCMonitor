@@ -1,8 +1,8 @@
 class Locmonitor < Formula
   desc "Track committed pull request size after each Git commit"
   homepage "https://github.com/AtLab12/LOCMonitor"
-  url "https://github.com/AtLab12/LOCMonitor/archive/refs/tags/v0.2.0.tar.gz"
-  sha256 "713e82319d7278c111da90682a8eaf7315e9b332d3e09008af1d3000f6d584e8"
+  url "https://github.com/AtLab12/LOCMonitor/archive/refs/tags/v0.3.0.tar.gz"
+  sha256 "ff2a9af291f5d342b6d55d44ce10e660a017aebefcd8273236787a855c82da89"
   license "MIT"
   head "https://github.com/AtLab12/LOCMonitor.git", branch: "main"
 
