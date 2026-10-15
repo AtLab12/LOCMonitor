@@ -73,7 +73,9 @@ locmonitor git commit -m "Add a small feature"
   "base": "origin/main",
   "limit": 400,
   "warn_at_percent": 80,
-  "exclude": ["**/*.lock", "vendor/**", "generated/**"]
+  "exclude_extensions": [".lock", ".svg", "min.js"],
+  "exclude_folders": ["vendor", "generated", "docs/assets"],
+  "exclude": ["**/*.generated.*"]
 }
 ```
 
@@ -82,11 +84,18 @@ locmonitor git commit -m "Add a small feature"
 | `base` | `"auto"` | PR target branch or another commit reference |
 | `limit` | `400` | Maximum additions + deletions |
 | `warn_at_percent` | `80` | Percentage at which the warning starts |
-| `exclude` | `[]` | Repository-relative Git glob patterns to omit |
+| `exclude_extensions` | `[]` | File extensions to omit everywhere, with or without the leading dot |
+| `exclude_folders` | `[]` | Repository-relative folders to omit, including all descendants |
+| `exclude` | `[]` | Additional repository-relative Git glob patterns to omit |
 
 Automatic base selection tries `origin/HEAD`, `origin/main`, local `main`, `origin/master`, then local `master`. Set `base` explicitly for stacked PRs, a different remote, or another target branch. LOCMonitor does not fetch or contact GitHub. Fetch your target branch yourself to keep the local reference current; shallow clones may need more history.
 
-Exclusions use Git's `glob` pathspec syntax: `*.lock` matches root files; `**/*.lock` matches lockfiles at any depth. No files are excluded automatically. The config file itself counts if committed unless you exclude it.
+All three exclusion lists combine: a file matching any one is omitted from line, file, and binary counts, including when deleted. Matching is case-sensitive. Existing configs using only `exclude` still work.
+
+- `exclude_extensions: ["json", ".lock", "min.js"]` excludes those suffixes in the repository root and every nested folder. `min.js` excludes `app.min.js` while keeping `app.js`; `json` does not exclude `data.json.backup`. Use extensions without wildcards.
+- `exclude_folders: ["vendor", "src/generated"]` excludes those exact paths and everything beneath them. Paths are relative to the repository root, even when you run Git from a subfolder. A trailing `/` is optional. `vendor` keeps `vendor-other` and `src/vendor`; to exclude every folder named `vendor`, use `exclude: ["**/vendor/**"]`. Spaces and brackets in folder names are treated literally. Use `/` separators, without absolute paths or `..`.
+
+The advanced `exclude` list uses Git's `glob` pathspec syntax: `*.lock` matches root files; `**/*.lock` matches lockfiles at any depth. No files are excluded automatically. The config file itself counts if committed unless you exclude it.
 
 The display progresses through `OK`, `NEAR LIMIT`, `LIMIT REACHED`, and `OVER LIMIT`. The bar caps at 100%, while the numeric count and percentage keep growing. LOC means added/deleted text lines, including comments and whitespace. Pure renames add no lines when Git recognizes them. Binary files are shown separately because Git cannot assign them meaningful line counts.
 

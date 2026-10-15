@@ -162,3 +162,81 @@ func TestLinkedWorktree(t *testing.T) {
 		t.Fatalf("linked worktree: %+v", s)
 	}
 }
+
+func TestFileTypeAndFolderExclusions(t *testing.T) {
+	dir := repo(t)
+	files := map[string]string{
+		"root.json":                          "ignored\n",
+		"src/deep/data.json":                 "ignored\n",
+		"deps.lock":                          "ignored\n",
+		"src/deep/deps.lock":                 "ignored\n",
+		"web/app.min.js":                     "ignored\n",
+		"vendor/library.txt":                 "ignored\n",
+		"vendor/nested/library.txt":          "ignored\n",
+		"generated files/[cache]/output.txt": "ignored\n",
+		"src/generated/deep/output.txt":      "ignored\n",
+		"vendor/binary.bin":                  "ignored\x00binary",
+		"vendor-other/keep.txt":              "keep\n",
+		"src/vendor/keep.txt":                "keep\n",
+		"generated files/c/output.txt":       "keep\n",
+		"web/app.js":                         "keep\n",
+		"data.json.backup":                   "keep\n",
+		"README.JSON":                        "keep\n",
+		"custom.skip":                        "ignored\n",
+	}
+	for name, body := range files {
+		if err := os.MkdirAll(filepath.Dir(filepath.Join(dir, name)), 0755); err != nil {
+			t.Fatal(err)
+		}
+		write(t, dir, name, body)
+	}
+	commit(t, dir)
+	// Keep the config uncommitted so it does not affect the measured diff.
+	write(t, dir, ConfigName, `{
+  "exclude_extensions": [".json", "lock", "min.js"],
+  "exclude_folders": ["vendor/", "./generated files/[cache]/", "src/generated"],
+  "exclude": ["**/*.skip"]
+ }`)
+	s := measure(t, dir)
+	if s.Total != 6 || s.Files != 6 || s.Binary != 0 {
+		t.Fatalf("unexpected included files: %+v", s)
+	}
+	// Running from a subdirectory must use the same repository-relative exclusions.
+	if nested := measure(t, filepath.Join(dir, "src", "deep")); nested != s {
+		t.Fatalf("subdirectory changed exclusions: %+v", nested)
+	}
+}
+
+func TestExclusionsAlsoApplyToDeletions(t *testing.T) {
+	dir := repo(t)
+	git(t, dir, "checkout", "main")
+	os.MkdirAll(filepath.Join(dir, "vendor", "nested"), 0755)
+	write(t, dir, "data.json", "ignored\n")
+	write(t, dir, "vendor/nested/file.txt", "ignored\n")
+	commit(t, dir)
+	git(t, dir, "checkout", "-b", "delete-files")
+	git(t, dir, "rm", "data.json", "vendor/nested/file.txt", "app.txt")
+	commit(t, dir)
+	write(t, dir, ConfigName, `{"exclude_extensions":["json"],"exclude_folders":["vendor"]}`)
+	if s := measure(t, dir); s.Deleted != 3 || s.Added != 0 || s.Files != 1 {
+		t.Fatalf("excluded deletions counted: %+v", s)
+	}
+}
+
+func TestExclusionValidation(t *testing.T) {
+	dir := t.TempDir()
+	for _, extension := range []string{"", ".", "..json", "json.", "*.json", "src/json", "json\\foo", "[js]", "j?on", "json\x00", " json"} {
+		data, _ := json.Marshal(map[string]any{"exclude_extensions": []string{extension}})
+		write(t, dir, ConfigName, string(data))
+		if _, err := Load(dir); err == nil {
+			t.Errorf("accepted extension %q", extension)
+		}
+	}
+	for _, folder := range []string{"", ".", "./", "/vendor", "..", "../vendor", "a/../vendor", "vendor\\nested", "vendor\x00"} {
+		data, _ := json.Marshal(map[string]any{"exclude_folders": []string{folder}})
+		write(t, dir, ConfigName, string(data))
+		if _, err := Load(dir); err == nil {
+			t.Errorf("accepted folder %q", folder)
+		}
+	}
+}

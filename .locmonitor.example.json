@@ -2,5 +2,17 @@
   "base": "origin/main",
   "limit": 400,
   "warn_at_percent": 80,
-  "exclude": ["**/*.lock", "vendor/**", "generated/**"]
+  "exclude": [
+    "**/*.generated.*"
+  ],
+  "exclude_extensions": [
+    ".lock",
+    ".svg",
+    "min.js"
+  ],
+  "exclude_folders": [
+    "vendor",
+    "generated",
+    "docs/assets"
+  ]
 }

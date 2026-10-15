@@ -34,5 +34,14 @@ class Locmonitor < Formula
     system "git", "add", "example.txt"
     system "git", "-c", "commit.gpgsign=false", "commit", "-m", "feature"
     assert_match "2/400 LOC", shell_output("#{bin}/locmonitor status")
+    (testpath/"vendor/nested").mkpath
+    (testpath/"vendor/nested/library.txt").write("excluded folder\n")
+    (testpath/"image.svg").write("excluded type\n")
+    system "git", "add", "vendor", "image.svg"
+    system "git", "-c", "commit.gpgsign=false", "commit", "-m", "excluded files"
+    (testpath/".locmonitor.json").write <<~JSON
+      {"exclude_extensions": [".svg"], "exclude_folders": ["vendor"]}
+    JSON
+    assert_match "2/400 LOC", shell_output("#{bin}/locmonitor status")
   end
 end

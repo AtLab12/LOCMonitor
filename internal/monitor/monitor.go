@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"path"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -16,13 +17,18 @@ import (
 const ConfigName = ".locmonitor.json"
 
 type Config struct {
-	Base    string   `json:"base"`
-	Limit   int      `json:"limit"`
-	WarnAt  int      `json:"warn_at_percent"`
-	Exclude []string `json:"exclude"`
+	Base              string   `json:"base"`
+	Limit             int      `json:"limit"`
+	WarnAt            int      `json:"warn_at_percent"`
+	Exclude           []string `json:"exclude"`
+	ExcludeExtensions []string `json:"exclude_extensions"`
+	ExcludeFolders    []string `json:"exclude_folders"`
 }
 
-func Defaults() Config { return Config{Base: "auto", Limit: 400, WarnAt: 80, Exclude: []string{}} }
+func Defaults() Config {
+	return Config{Base: "auto", Limit: 400, WarnAt: 80,
+		Exclude: []string{}, ExcludeExtensions: []string{}, ExcludeFolders: []string{}}
+}
 
 func Git(dir string, args ...string) ([]byte, error) {
 	cmd := exec.Command("git", args...)
@@ -66,6 +72,28 @@ func Load(root string) (Config, error) {
 		if p == "" || strings.HasPrefix(p, ":") {
 			return c, fmt.Errorf("exclude entries must be nonempty Git glob patterns without pathspec magic")
 		}
+	}
+	for i, extension := range c.ExcludeExtensions {
+		extension = strings.TrimPrefix(extension, ".")
+		if extension == "" || strings.HasPrefix(extension, ".") || strings.HasSuffix(extension, ".") || strings.ContainsAny(extension, "/\\*?[]\x00 \t\r\n") {
+			return c, fmt.Errorf("exclude_extensions entries must be extensions such as .json, lock, or min.js (no paths or wildcards)")
+		}
+		c.ExcludeExtensions[i] = extension
+	}
+	for i, folder := range c.ExcludeFolders {
+		if folder == "" || path.IsAbs(folder) || strings.ContainsAny(folder, "\\\x00") {
+			return c, fmt.Errorf("exclude_folders entries must be repository-relative folder paths using / separators")
+		}
+		for _, part := range strings.Split(folder, "/") {
+			if part == ".." {
+				return c, fmt.Errorf("exclude_folders entries cannot contain ..")
+			}
+		}
+		folder = path.Clean(folder)
+		if folder == "." {
+			return c, fmt.Errorf("exclude_folders must name a folder, not the repository root")
+		}
+		c.ExcludeFolders[i] = folder
 	}
 	return c, nil
 }
@@ -145,6 +173,14 @@ func Measure(dir string) (Stats, error) {
 	args := []string{"diff", "--numstat", "-z", "--no-ext-diff", "--no-textconv", "--find-renames", s.MergeBase, strings.TrimSpace(string(headID)), "--", "."}
 	for _, p := range c.Exclude {
 		args = append(args, ":(top,exclude,glob)"+p)
+	}
+	for _, extension := range c.ExcludeExtensions {
+		args = append(args, ":(top,exclude,glob)**/*."+extension)
+	}
+	for _, folder := range c.ExcludeFolders {
+		// Literal paths keep spaces and glob characters in directory names literal.
+		// The trailing slash limits the match to the directory and its descendants.
+		args = append(args, ":(top,exclude,literal)"+folder+"/")
 	}
 	out, err := Git(root, args...)
 	if err != nil {
